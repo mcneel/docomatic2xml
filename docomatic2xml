@@ -27,27 +27,40 @@ def process_lines(content):
 
     for l in content:
         # print l
+
+        # replace tabs with 2 spaces
+        l = l.replace('\t', '  ')
+
         if not in_block:
             m = re.match(r'^( *)/\*(.*)', l) # match /*
             if m:
+                # forcefully start a new block
+                if len(block) > 0:
+                    block.pprint()
+                    block = Block()
                 in_block = True
                 block.indent = len(m.group(1))
-                block.lines.append(m.group(2).strip())
+                if m.group(2).strip():
+                    block.lines.append(m.group(2))
                 continue
 
             # if '//' in l:
             m = re.match(r'^( *)//(.*)', l) # match //
             if m:
-                if not m.group(2).startswith('/'): # don't match ///
+                if m.group(2).startswith('/'): # fixup existing /// comments
+                    if re.search('^ *///[^ /]', l):
+                        print l.replace('///', '/// ')
+                        continue
+                else:
                     block.indent = len(m.group(1))
-                    block.lines.append(m.group(2).strip())
+                    block.lines.append(m.group(2))
                     continue
 
         elif in_block:
             if '*/' in l:
                 in_block = False
             else:
-                block.lines.append(l.strip())
+                block.lines.append(l)
             continue
 
         if len(block) > 0:
@@ -66,30 +79,37 @@ class Block:
 
     def pprint(self):
         if len(self) == 1:
-            print ' ' * self.indent + '/// ' + self.lines[0]
+            slashes = '///' if self.indent < 10 else '//'
+            print ' ' * self.indent + slashes + self.lines[0].rstrip()
         else:
             store = {}
             key = None
+            orphans = []
             for l in self.lines:
-                if not l.strip():
-                    continue
+                # if not l.strip():
+                #     continue
                 #print ' ' * self.indent + '/// ' + l
-                if l.endswith(':'):
-                    key = l[:-1].lower()
+                if l.strip().endswith(':'):
+                    key = l.strip()[:-1].lower()
                     store[key] = []
                 elif key:
-                    store[key].append(l)
+                    store[key].append(l.strip())
                 else:
                     #print ' ' * self.indent + '// ' + l # normal comment
-                    print 'ERROR: "{}"'.format(l)
+                    orphans.append(l) # normal comment
+                    # print 'ERROR: "{}"'.format(l)
             # print store
 
             # not a doc-o-matic comment
-            if len(store) == 0:
-                for l in self.lines:
-                    print ' ' * self.indent + '// ' + l
+            if len(orphans) > 0:
+                if len(store) > 0:
+                    raise Exception("Orphan comments! {}".format(str(store)))
+                # for l in self.lines:
+                for l in orphans:
+                    print ' ' * self.indent + '//' + l
 
             # Description (summary)
+            # print store
             if 'description' in store:
                 print ' ' * self.indent + '/// <summary>'
                 for l in store['description']:
@@ -107,7 +127,7 @@ class Block:
             if 'parameters' in store:
                 params = []
                 for l in store['parameters']: # another loop!
-                    m = re.match(r'^([a-zA-Z0-9_]+) +- +(.*)', l)
+                    m = re.match(r'^([a-zA-Z0-9_]+) *- *(.*)', l)
                     if not m:
                         if len(params) == 0:
                             raise Exception(l)
@@ -146,8 +166,8 @@ class Block:
                     print ' ' * self.indent + '/// <seealso cref="{}"/>'.format(l)
                 store.pop('see also')
             if len(store) > 0:
-                # raise Exception(str(store))
-                print 'ERROR: ' + str(store)
+                raise Exception(str(store))
+                # print 'ERROR: ' + str(store)
 
 
 
