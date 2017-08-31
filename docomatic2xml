@@ -1,0 +1,155 @@
+#!/usr/bin/env python
+
+import re
+import sys
+
+def main():
+    files = sys.argv[1:]
+
+    for fname in files:
+        # print fname
+
+        with open(fname) as f:
+            content = f.readlines()
+
+        content = [x.rstrip() for x in content]
+
+        skip = 15
+
+        for l in content[:skip]:
+            print l
+
+        process_lines(content[skip:])
+
+def process_lines(content):
+    block = Block()
+    in_block = False
+
+    for l in content:
+        # print l
+        if not in_block:
+            m = re.match(r'^( *)/\*(.*)', l) # match /*
+            if m:
+                in_block = True
+                block.indent = len(m.group(1))
+                block.lines.append(m.group(2).strip())
+                continue
+
+            # if '//' in l:
+            m = re.match(r'^( *)//(.*)', l) # match //
+            if m:
+                if not m.group(2).startswith('/'): # don't match ///
+                    block.indent = len(m.group(1))
+                    block.lines.append(m.group(2).strip())
+                    continue
+
+        elif in_block:
+            if '*/' in l:
+                in_block = False
+            else:
+                block.lines.append(l.strip())
+            continue
+
+        if len(block) > 0:
+            #print len(block)
+            block.pprint()
+        block = Block()
+        print l
+
+class Block:
+    def __init__(self):
+        self.lines = []
+        self.indent = 0
+
+    def __len__(self):
+        return len(self.lines) if self.lines else 0
+
+    def pprint(self):
+        if len(self) == 1:
+            print ' ' * self.indent + '/// ' + self.lines[0]
+        else:
+            store = {}
+            key = None
+            for l in self.lines:
+                if not l.strip():
+                    continue
+                #print ' ' * self.indent + '/// ' + l
+                if l.endswith(':'):
+                    key = l[:-1].lower()
+                    store[key] = []
+                elif key:
+                    store[key].append(l)
+                else:
+                    #print ' ' * self.indent + '// ' + l # normal comment
+                    print 'ERROR: "{}"'.format(l)
+            # print store
+
+            # not a doc-o-matic comment
+            if len(store) == 0:
+                for l in self.lines:
+                    print ' ' * self.indent + '// ' + l
+
+            # Description (summary)
+            if 'description' in store:
+                print ' ' * self.indent + '/// <summary>'
+                for l in store['description']:
+                    print ' ' * self.indent + '/// ' + l
+
+                # Details (add as para inside summary)
+                if 'details' in store:
+                    print ' ' * self.indent + '/// <para>'
+                    for l in store['details']:
+                        print ' ' * self.indent + '/// ' + l
+                    print ' ' * self.indent + '/// </para>'
+                    store.pop('details')
+                print ' ' * self.indent + '/// </summary>'
+                store.pop('description')
+            if 'parameters' in store:
+                params = []
+                for l in store['parameters']: # another loop!
+                    m = re.match(r'^([a-zA-Z0-9_]+) +- +(.*)', l)
+                    if not m:
+                        if len(params) == 0:
+                            raise Exception(l)
+                        params.append(l)
+                    else:
+                        if params:
+                            params[-1] += '</param>'
+                        params.append('<param name="{}">{}'.format(m.group(1), m.group(2)))
+                params[-1] += '</param>'
+                for p in params:
+                    print ' ' * self.indent + '/// ' + p
+                store.pop('parameters')
+            if 'returns' in store:
+                #if len(store['returns']) > 1:
+                print ' ' * self.indent + '/// <returns>'
+                for l in store['returns']:
+                    print ' ' * self.indent + '/// ' + l
+                print ' ' * self.indent + '/// </returns>'
+                store.pop('returns')
+            if 'remarks' in store:
+                print ' ' * self.indent + '/// <remarks>'
+                for l in store['remarks']:
+                    print ' ' * self.indent + '/// ' + l
+                print ' ' * self.indent + '/// </remarks>'
+                store.pop('remarks')
+            if 'example' in store:
+                print ' ' * self.indent + '/// <example>'
+                print ' ' * self.indent + '/// <code>'
+                for l in store['example']:
+                    print ' ' * self.indent + '/// ' + l
+                print ' ' * self.indent + '/// </code>'
+                print ' ' * self.indent + '/// </example>'
+                store.pop('example')
+            if 'see also' in store:
+                for l in store['see also']:
+                    print ' ' * self.indent + '/// <seealso cref="{}"/>'.format(l)
+                store.pop('see also')
+            if len(store) > 0:
+                # raise Exception(str(store))
+                print 'ERROR: ' + str(store)
+
+
+
+if __name__ == '__main__':
+    main()
