@@ -14,6 +14,7 @@ def main():
 
         content = [x.rstrip() for x in content]
 
+        # skip header and license
         skip = 15
 
         for l in content[:skip]:
@@ -78,68 +79,87 @@ class Block:
         return len(self.lines) if self.lines else 0
 
     def pprint(self):
-        if len(self) == 1:
-            slashes = '///' if self.indent < 10 else '//'
-            print ' ' * self.indent + slashes + self.lines[0].rstrip()
-        else:
+        if self.indent > 10: # comments with large indents are better left alone
+            for l in self.lines:
+                print ' ' * self.indent + '//' + l.rstrip()
+        elif len(self) == 1: # don't try to parse one line comments
+            print ' ' * self.indent + '///' + self.lines[0].rstrip()
+        else: # try to parse doc-o-matic syntax
             store = {}
             key = None
             orphans = []
+            allowed_keys = ['description', 'details', 'parameters', 'input', 'returns', 'remarks', 'comments', 'example', 'see also']
             for l in self.lines:
                 # if not l.strip():
                 #     continue
                 #print ' ' * self.indent + '/// ' + l
                 if l.strip().endswith(':'):
-                    key = l.strip()[:-1].lower()
-                    store[key] = []
-                elif key:
-                    store[key].append(l.strip())
+                    tmp_key = l.strip()[:-1].lower()
+                    if tmp_key in allowed_keys:
+                        key = tmp_key
+                        store[key] = []
+                        continue
+                    else:
+                        print ' ' * self.indent + '// TODODOC: ' + tmp_key
+                if key:
+                    # preserve indent
+                    indent = max(len(l) - len(l.lstrip()) - self.indent, 0)
+                    l = l.strip() if indent < 3 else l.rstrip()[2:]
+                    # indent = (indent - self.indent) if indent > self.indent else 0
+                    store[key].append(l)
                 else:
-                    #print ' ' * self.indent + '// ' + l # normal comment
-                    orphans.append(l) # normal comment
-                    # print 'ERROR: "{}"'.format(l)
+                    orphans.append(l)
+                    # print ' ' * self.indent + '// TODODOC: ' + l
+
             # print store
 
-            # not a doc-o-matic comment
-            if len(orphans) > 0:
-                if len(store) > 0:
-                    raise Exception("Orphan comments! {}".format(str(store)))
-                # for l in self.lines:
+            # not a doc-o-matic comment?
+            if not any(key in store for key in allowed_keys):
+                # print ' ' * self.indent + '// TODODOC:'
+                for l in self.lines:
+                    print ' ' * self.indent + '//' + l
+                return
+
+            # doc-o-matic comments found, but some lines didn't parse correctly
+            # print them with a note to come back later
+            if orphans:
+                print ' ' * self.indent + '// TODODOC: partial doc'
                 for l in orphans:
                     print ' ' * self.indent + '//' + l
+                # raise Exception(len(self.lines) - len(orphans))
+                # return
 
-            # Description (summary)
+            ###########################
+            # parse doc-o-matic comment
+
+
             # print store
-            if 'description' in store:
+            # Description => <summary>
+            if 'description' in store or 'details' in store:
                 print ' ' * self.indent + '/// <summary>'
-                for l in store['description']:
-                    print ' ' * self.indent + '/// ' + l
-
-                # Details (add as para inside summary)
+                # Description
+                if 'description' in store:
+                    for l in store['description']:
+                        print ' ' * self.indent + '/// ' + l
+                    store.pop('description')
+                # Details
                 if 'details' in store:
-                    print ' ' * self.indent + '/// <para>'
+                    print ' ' * self.indent + '///'
+                    # print ' ' * self.indent + '/// <para>'
                     for l in store['details']:
                         print ' ' * self.indent + '/// ' + l
-                    print ' ' * self.indent + '/// </para>'
+                    # print ' ' * self.indent + '/// </para>'
                     store.pop('details')
                 print ' ' * self.indent + '/// </summary>'
-                store.pop('description')
+            # Parameters => <param>...
             if 'parameters' in store:
-                params = []
-                for l in store['parameters']: # another loop!
-                    m = re.match(r'^([a-zA-Z0-9_]+) *- *(.*)', l)
-                    if not m:
-                        if len(params) == 0:
-                            raise Exception(l)
-                        params.append(l)
-                    else:
-                        if params:
-                            params[-1] += '</param>'
-                        params.append('<param name="{}">{}'.format(m.group(1), m.group(2)))
-                params[-1] += '</param>'
-                for p in params:
-                    print ' ' * self.indent + '/// ' + p
+                process_params(store['parameters'], self.indent)
                 store.pop('parameters')
+            # Input => <param>...
+            if 'input' in store:
+                process_params(store['input'], self.indent)
+                store.pop('input')
+            # Returns => <returns>
             if 'returns' in store:
                 #if len(store['returns']) > 1:
                 print ' ' * self.indent + '/// <returns>'
@@ -147,12 +167,21 @@ class Block:
                     print ' ' * self.indent + '/// ' + l
                 print ' ' * self.indent + '/// </returns>'
                 store.pop('returns')
+            # Remarks => <remarks>
             if 'remarks' in store:
                 print ' ' * self.indent + '/// <remarks>'
                 for l in store['remarks']:
                     print ' ' * self.indent + '/// ' + l
                 print ' ' * self.indent + '/// </remarks>'
                 store.pop('remarks')
+            # Comments (alias for 'Remarks')
+            if 'comments' in store:
+                print ' ' * self.indent + '/// <remarks>'
+                for l in store['comments']:
+                    print ' ' * self.indent + '/// ' + l
+                print ' ' * self.indent + '/// </remarks>'
+                store.pop('comments')
+            # Example => <example>
             if 'example' in store:
                 print ' ' * self.indent + '/// <example>'
                 print ' ' * self.indent + '/// <code>'
@@ -161,14 +190,34 @@ class Block:
                 print ' ' * self.indent + '/// </code>'
                 print ' ' * self.indent + '/// </example>'
                 store.pop('example')
+            # See also => <seealso>...
             if 'see also' in store:
                 for l in store['see also']:
                     print ' ' * self.indent + '/// <seealso cref="{}"/>'.format(l)
                 store.pop('see also')
-            if len(store) > 0:
-                raise Exception(str(store))
-                # print 'ERROR: ' + str(store)
 
+            # no string left behind...
+            if len(store) > 0:
+                raise Exception('LEFTOVERS >>> ' + str(store))
+
+def process_params(lines, indent):
+    params = []
+    for l in lines: # another loop!
+        m = re.match(r'^([a-zA-Z0-9_]+) *- *(.*)', l.strip())
+        if not m:
+            if len(params) == 0:
+                print ' ' * indent + '/// TODODOC: ' + l
+                continue
+                # raise Exception(l)
+            params.append(l)
+        else:
+            if params:
+                params[-1] += '</param>'
+            params.append('<param name="{}">{}'.format(m.group(1), m.group(2)))
+    if params:
+        params[-1] += '</param>'
+        for p in params:
+            print ' ' * indent + '/// ' + p
 
 
 if __name__ == '__main__':
