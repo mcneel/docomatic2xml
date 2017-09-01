@@ -14,6 +14,9 @@ def main():
 
         content = [x.rstrip() for x in content]
 
+        # uncomment to rewrite the original file, instead of printing to STDOUT
+        #sys.stdout = open(fname, 'w')
+
         # skip header and license
         skip = 15
 
@@ -35,6 +38,9 @@ def process_lines(content):
         if not in_block:
             m = re.match(r'^( *)/\*(.*)', l) # match /*
             if m:
+                if l.rstrip().endswith('*/'): # no one-liners
+                    print l
+                    continue
                 # forcefully start a new block
                 if len(block) > 0:
                     block.pprint()
