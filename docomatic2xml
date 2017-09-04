@@ -1,7 +1,62 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
 import re
 import sys
+import Levenshtein
+
+known_keywords = [
+    'description',  # summary
+    'details',      # summary
+
+    'parameters',   # param
+    'input',        # param
+    'output',       # param
+    'properties',   # param
+
+    'returns',      # returns
+    'result',       # returns
+
+    'remarks',      # remarks
+    'comments',     # remarks
+    'restrictions', # remarks
+    'notes',        # remarks
+    'note well',    # remarks
+
+    'example',      # example
+
+    'see also'      # seealso
+]
+
+aliases = {
+    'description': ['description', 'details'],
+    # 'details':     ['details'],
+    'parameters':  ['parameters', 'input', 'output', 'properties'],
+    'returns':     ['returns', 'result'],
+    'remarks':     ['remarks', 'comments', 'restrictions', 'notes', 'note well'],
+    'example':     ['example'],
+    'see also':    ['see also']
+}
+
+def dist(str1, str2):
+    a = Levenshtein.distance(str1, str2)
+    return 1-(float(a)/max(len(str1),len(str2)))
+
+def match(keyword):
+    score = 0
+    matched_k = None
+    for k in known_keywords:
+        d = dist(k, keyword)
+        if d > score:
+                score = d
+                matched_k = k
+    return matched_k, score
+
+def alias(keyword):
+    for k in aliases.keys():
+        if keyword in aliases[k]:
+            return k
+    return None
 
 def main():
     files = sys.argv[1:]
@@ -17,13 +72,7 @@ def main():
         # uncomment to rewrite the original file, instead of printing to STDOUT
         #sys.stdout = open(fname, 'w')
 
-        # skip header and license
-        skip = 15
-
-        for l in content[:skip]:
-            print l
-
-        process_lines(content[skip:])
+        process_lines(content)
 
 def process_lines(content):
     block = Block()
@@ -36,22 +85,22 @@ def process_lines(content):
         l = l.replace('\t', '  ')
 
         if not in_block:
+            # multiline block comment => /* */
             m = re.match(r'^( *)/\*(.*)', l) # match /*
             if m:
                 if '*/' in l: # no one-liners
                     print l
                     continue
-                # forcefully start a new block
+                # start a new "block" comment block
                 if len(block) > 0:
                     block.pprint()
                 block = Block(True)
                 in_block = True
-                block.indent = len(m.group(1))
-                if m.group(2).strip():
-                    block.lines.append(m.group(2))
+                block.lines.append(l)
                 continue
 
-            # if '//' in l:
+            # normal multiline comment => //
+            # only look for these if we've not in a /* */ block
             m = re.match(r'^( *)//(.*)', l) # match //
             if m:
                 if m.group(2).startswith('/'): # fixup existing /// comments
@@ -59,125 +108,157 @@ def process_lines(content):
                         print l.replace('///', '/// ')
                         continue
                 else:
-                    block.indent = len(m.group(1))
-                    block.lines.append(m.group(2))
+                    block.lines.append(l)
                     continue
 
         elif in_block:
+            # end block comment
             if '*/' in l:
+                # something after the */
                 if len(l.strip()) > 2 and not l.rstrip().endswith('*/'):
-                    # print '// TODODOC: ' + l
                     raise Exception(l)
-                in_block = False
+                block.lines.append(l)
                 # end current block and flush
                 block.pprint()
                 block = Block()
+                in_block = False
             else:
                 block.lines.append(l)
             continue
 
+        # not a comment line
+        # print block (if we've just finished one) and then print line
         if len(block) > 0:
-            #print len(block)
             block.pprint()
-        block = Block()
+        block = Block() # reset comment block
         print l
 
 class Block:
     def __init__(self, asterix=False):
         self.lines = []
         self.indent = 0
-        self.asterix = asterix
+        self.asterix = asterix # comment block uses /* */
 
     def __len__(self):
         return len(self.lines) if self.lines else 0
 
-    def pprint(self):
-        if self.indent > 10: # comments with large indents are better left alone
+    def strip(self):
+        """Strips comment characters (/*, */, //) and sets indent for block."""
+        if not self.lines:
+            return
+        new_lines = []
+        # look for /* on first line
+        m = re.match(r'^( *)\/\*(.*)', self.lines[0])
+        if m:
+            self.indent = len(m.group(1))
+            if m.group(2).strip():
+                new_lines.append(m.group(2))
+            for l in self.lines[1:-1]:
+                new_lines.append(l.strip().lstrip('*').lstrip()) # TODO: preserve indent
+            if self.lines[-1].strip() != '*/':
+                if self.lines[-1].rstrip().endswith('*/'):
+                    # print 'WOWOW: ', self.lines[-1]
+                    new_lines.append(self.lines[-1].rstrip()[:-2].strip())
+                else:
+                    raise Exception(self.lines[-1])
+        else:
+            m = re.match(r'^( *)//(.*)', self.lines[0])
+            if m:
+                self.indent = len(m.group(1))
             for l in self.lines:
-                print ' ' * self.indent + '//' + l.rstrip()
+                new_lines.append(l.strip().lstrip('/').lstrip()) # TODO: preserve indent
+
+        # self.indent = 0 if self.indent < 0
+        #
+        # for i in range(len(new_lines)):
+        #     if self.indent and len(new_lines[i]) - len(new_lines[i].lstrip()) > self.indent:
+        #         new_lines[i] = new_lines[i][self.indent:]
+        #     else:
+        #         new_lines[i] = new_lines[i].lstrip
+
+        self.original = self.lines
+        self.lines = new_lines
+
+
+    def pprint(self):
+        # strip comment chars and set indent
+        self.strip()
+
+        if self.indent > 10: # comments with large indents are better left alone
+            for l in self.original:
+                # print ' ' * self.indent + '//' + l.rstrip()
+                print l.rstrip()
         elif len(self) == 1: # don't try to parse one line comments
-            print ' ' * self.indent + '///' + self.lines[0].rstrip()
+            # print ' ' * self.indent + '///' + self.lines[0].rstrip()
+            print self.original[0].rstrip()
         else: # try to parse doc-o-matic syntax
             store = {}
-            key = None
+            current_key = None
             orphans = []
-            allowed_keys = ['description', 'details', 'parameters', 'input', 'returns', 'remarks', 'comments', 'example', 'see also']
+            # allowed_keys = ['description', 'details', 'parameters', 'input', 'returns', 'remarks', 'comments', 'example', 'see also']
             for l in self.lines:
                 # if not l.strip():
                 #     continue
                 #print ' ' * self.indent + '/// ' + l
                 if l.strip().endswith(':'):
                     tmp_key = l.strip()[:-1].lower()
-                    if tmp_key in allowed_keys:
-                        key = tmp_key
-                        store[key] = []
+                    k, d = match(tmp_key) # fuzzy wuzzy was a bear!
+                    # if k in allowed_keys:
+                    if d and d <= 1.0 and d > 0.6:
+                        # print 'DEBUG:', k, d
+                        current_key = alias(k)
+                        if current_key in store:
+                            store[current_key].append('')
+                        else:
+                            store[current_key] = []
                         continue
                     else:
-                        print ' ' * self.indent + '// TODODOC: ' + tmp_key
-                if key:
+                        print ' ' * self.indent + '// TODODOC: not a keyword: "{}"'.format(l)
+                if current_key:
                     # preserve indent
-                    indent = max(len(l) - len(l.lstrip()) - self.indent, 0)
-                    l = l.strip() if indent < 3 else l.rstrip()[2:]
+                    # indent = max(len(l) - len(l.lstrip()) - self.indent, 0)
+                    # l = l.strip() if indent < 3 else l.rstrip()[2:]
                     # indent = (indent - self.indent) if indent > self.indent else 0
-                    store[key].append(l)
+                    store[current_key].append(l)
                 else:
+                    # # assume summary
+                    # if l.strip():
+                    #     current_key = 'description'
+                    #     store[current_key] = [l]
                     orphans.append(l)
                     # print ' ' * self.indent + '// TODODOC: ' + l
 
-            # print store
-
             # not a doc-o-matic comment?
-            if not any(key in store for key in allowed_keys):
-                # print ' ' * self.indent + '// TODODOC:'
-                if self.asterix:
-                    print ' ' * self.indent + '/*'
-                    for l in self.lines:
-                        print l
-                    print ' ' * self.indent + '*/'
-                else:
-                    for l in self.lines:
-                        print ' ' * self.indent + '//' + l
+            if not store:
+                for l in self.original:
+                    print l
                 return
 
-            # doc-o-matic comments found, but some lines didn't parse correctly
-            # print them with a note to come back later
+            # doc-o-matic comments found, but some lines were parsed before a
+            # qualifying keyword was found
+            # print them with a note to remind me to come back later
             if orphans:
-                print ' ' * self.indent + '// TODODOC: partial doc'
+                print ' ' * self.indent + '// TODODOC: text found above first keyword'
                 for l in orphans:
-                    print ' ' * self.indent + '//' + l
+                    print ' ' * self.indent + '/// ' + l
                 # raise Exception(len(self.lines) - len(orphans))
                 # return
 
             ###########################
             # parse doc-o-matic comment
 
-
             # print store
             # Description => <summary>
-            if 'description' in store or 'details' in store:
+            if 'description' in store:
                 print ' ' * self.indent + '/// <summary>'
-                # Description
-                if 'description' in store:
-                    for l in store['description']:
-                        print ' ' * self.indent + '/// ' + l
-                    store.pop('description')
-                # Details
-                if 'details' in store:
-                    print ' ' * self.indent + '///'
-                    # print ' ' * self.indent + '/// <para>'
-                    for l in store['details']:
-                        print ' ' * self.indent + '/// ' + l
-                    # print ' ' * self.indent + '/// </para>'
-                    store.pop('details')
+                for l in store['description']:
+                    print ' ' * self.indent + '/// ' + l
+                store.pop('description')
                 print ' ' * self.indent + '/// </summary>'
             # Parameters => <param>...
             if 'parameters' in store:
                 process_params(store['parameters'], self.indent)
                 store.pop('parameters')
-            # Input => <param>...
-            if 'input' in store:
-                process_params(store['input'], self.indent)
-                store.pop('input')
             # Returns => <returns>
             if 'returns' in store:
                 #if len(store['returns']) > 1:
@@ -222,10 +303,10 @@ class Block:
 def process_params(lines, indent):
     params = []
     for l in lines: # another loop!
-        m = re.match(r'^([a-zA-Z0-9_]+) *- *(.*)', l.strip())
+        m = re.match(r'^([a-zA-Z0-9_]+) +-\s*(.*)', l.strip())
         if not m:
             if len(params) == 0:
-                print ' ' * indent + '/// TODODOC: ' + l
+                print ' ' * indent + '// TODODOC: error parsing parameters "{}"'.format(l)
                 continue
                 # raise Exception(l)
             params.append(l)
