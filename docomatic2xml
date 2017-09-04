@@ -213,7 +213,7 @@ class Block:
                             store[current_key] = []
                         continue
                     else:
-                        print ' ' * self.indent + '// TODODOC: not a keyword: "{}"'.format(l)
+                        print ' ' * self.indent + '// TODODOC: not a recognized keyword: "{}"'.format(l)
                 if current_key:
                     # preserve indent
                     # indent = max(len(l) - len(l.lstrip()) - self.indent, 0)
@@ -301,19 +301,34 @@ class Block:
                 raise Exception('LEFTOVERS >>> ' + str(store))
 
 def process_params(lines, indent):
+    if not lines:
+        return
     params = []
+    orphans = []
     for l in lines: # another loop!
         m = re.match(r'^([a-zA-Z0-9_]+) +-\s*(.*)', l.strip())
-        if not m:
-            if len(params) == 0:
-                print ' ' * indent + '// TODODOC: error parsing parameters "{}"'.format(l)
-                continue
-                # raise Exception(l)
-            params.append(l)
+        if m:
+            name = m.group(1)
+            desc = m.group(2)
         else:
-            if params:
-                params[-1] += '</param>'
-            params.append('<param name="{}">{}'.format(m.group(1), m.group(2)))
+            if len(params) == 0:
+                orphans.append(l)
+                # print ' ' * indent + '// TODODOC: error parsing parameters "{}"'.format(l)
+                # raise Exception(l)
+            else:
+                params.append(l)
+            continue
+
+        if params:
+            params[-1] += '</param>'
+        params.append('<param name="{}">{}'.format(name, desc))
+
+    if orphans:
+        print ' ' * indent + '// TODODOC: orphaned parameter description'
+        for o in orphans:
+            print ' ' * indent + '// ' + o
+
+    # print params, if we got any
     if params:
         params[-1] += '</param>'
         for p in params:
