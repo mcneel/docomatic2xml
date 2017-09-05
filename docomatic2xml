@@ -189,8 +189,10 @@ class Block:
         #         new_lines[i] = new_lines[i].lstrip
 
         self.original = self.lines
-        self.lines = new_lines
+        self.lines = strip_list(new_lines)
 
+        # if (len(self.lines) < len(new_lines)):
+        #     print "TODODOC6", new_lines
 
     def pprint(self):
         # strip comment chars and set indent
@@ -254,28 +256,23 @@ class Block:
                 # if we don't have a description, use the orphaned lines
                 if not 'description' in store:
                     store['description'] = orphans
-                    print 'TODODOC4', store['description']
+                    # print 'TODODOC4', store['description']
 
                 # well, at least we tried...
                 else:
-                    # strip leading blank lines
-                    first = 0
+                    print ' ' * self.indent + '// TODODOC: text found above first keyword'
+                    # for l in orphans[first:]:
                     for l in orphans:
-                        if not l.strip():
-                            first += 1
-                        else:
-                            break
-                    orphans = orphans[first:]
-
-                    # if we still have orphaned lines, print them with a reminder
-                    if orphans:
-                        print ' ' * self.indent + '// TODODOC: text found above first keyword'
-                        # for l in orphans[first:]:
-                        for l in orphans:
-                            print ' ' * self.indent + '// ' + l
+                        print ' ' * self.indent + '// ' + l
 
             ###########################
             # parse doc-o-matic comment
+
+            # strip leading and trailing blank lines
+            for k in store.keys():
+                # if k == 'example':
+                #     continue
+                store[k] = strip_list(store[k])
 
             # print store
             # Description => <summary>
@@ -386,6 +383,28 @@ def process_params(lines, indent):
         params[-1] += '</param>'
         for p in params:
             print ' ' * indent + '/// ' + p
+
+def strip_list(lines):
+    # strip leading blank lines
+    first = 0
+    for l in lines:
+        if not l.strip():
+            first += 1
+        else:
+            break
+
+    # strip trailing blank lines
+    last = 0
+    for l in reversed(lines):
+        if not l.strip():
+            last -= 1
+        else:
+            break
+
+    if last == 0:
+        return lines[first:]
+    else:
+        return lines[first:last]
 
 
 if __name__ == '__main__':
