@@ -107,8 +107,11 @@ def process_lines(content):
             m = re.match(r'^( *)//(.*)', l) # match //
             if m:
                 # skip /// lines (but make sure there's a space after the '///')
-                if m.group(2).startswith('/') and re.search('^ *///[^ /]', l):
-                    print l.replace('///', '/// ')
+                if m.group(2).startswith('/'):
+                    if re.search('^ *///[^ /]', l):
+                        print l.replace('///', '/// ')
+                    else:
+                        print l
 
                 # skip '// -----...' and '// =====...' lines
                 elif re.search('------', l) or re.search('======', l):
@@ -248,6 +251,13 @@ class Block:
                 for l in self.original:
                     print l
                 return
+
+            # special case: "note"
+            if len(store) == 1 and 'remarks' in store:
+                if self.original[0].lstrip().lower().startswith('// note'):
+                    for l in self.original:
+                        print l
+                    return
 
             # doc-o-matic comments found, but some lines were parsed before a
             # qualifying keyword was found
