@@ -371,6 +371,10 @@ def process_params(lines, indent):
 
         if params:
             params[-1] += '</param>'
+
+        if name.lower() == 'returns':
+            print ' ' * indent + '// TODODOC: "returns" param? surely not...'
+
         params.append('<param name="{}">{}'.format(name, desc))
 
     if orphans:
