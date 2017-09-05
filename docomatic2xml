@@ -91,6 +91,9 @@ def process_lines(content):
                 if '*/' in l: # no one-liners
                     print l
                     continue
+                if l.lstrip().startswith('/**'): # ignore /** blocks
+                    print l
+                    continue
                 # start a new "block" comment block
                 if len(block) > 0:
                     block.pprint()
@@ -213,7 +216,8 @@ class Block:
                             store[current_key] = []
                         continue
                     else:
-                        print ' ' * self.indent + '// TODODOC: not a recognized keyword: "{}"'.format(l)
+                        if re.match('^[a-z ]+$', l.strip()) and len(l.strip().split()) < 5:
+                            print ' ' * self.indent + '// TODODOC: not a recognized keyword: "{}"'.format(l)
                 if current_key:
                     # preserve indent
                     # indent = max(len(l) - len(l.lstrip()) - self.indent, 0)
@@ -221,12 +225,7 @@ class Block:
                     # indent = (indent - self.indent) if indent > self.indent else 0
                     store[current_key].append(l)
                 else:
-                    # # assume summary
-                    # if l.strip():
-                    #     current_key = 'description'
-                    #     store[current_key] = [l]
                     orphans.append(l)
-                    # print ' ' * self.indent + '// TODODOC: ' + l
 
             # not a doc-o-matic comment?
             if not store:
@@ -238,11 +237,15 @@ class Block:
             # qualifying keyword was found
             # print them with a note to remind me to come back later
             if orphans:
-                print ' ' * self.indent + '// TODODOC: text found above first keyword'
-                for l in orphans:
-                    print ' ' * self.indent + '/// ' + l
-                # raise Exception(len(self.lines) - len(orphans))
-                # return
+                first = 0
+                # print first orphaned line normally, if it's not text, e.g. "// --------"
+                if not re.search('[a-zA-Z0-9]', orphans[0]):
+                    print ' ' * self.indent + '// ' + l
+                    first = 1
+                if len(orphans) > first:
+                    print ' ' * self.indent + '// TODODOC: text found above first keyword'
+                    for l in orphans[first:]:
+                        print ' ' * self.indent + '// ' + l
 
             ###########################
             # parse doc-o-matic comment
@@ -303,16 +306,44 @@ class Block:
 def process_params(lines, indent):
     if not lines:
         return
+
+    if len(lines) == 1 and re.match(r'none.?', lines[0].strip().lower()):
+        return
+
     params = []
     orphans = []
+    name = desc = None
     for l in lines: # another loop!
-        m = re.match(r'^([a-zA-Z0-9_]+) +-\s*(.*)', l.strip())
+        m = re.match(r'^([a-zA-Z0-9_]+) +- *(.*)', l.strip())
         if m:
             name = m.group(1)
             desc = m.group(2)
         else:
+            m = re.match(r'^([a-zA-Z0-9_]+) *(\[[inout\/I]+\]) *(-|:|=)? *(.*)', l.strip())
+            if m:
+                name = m.group(1)
+                desc = '{} {}'.format(m.group(2), m.group(4))
+            else:
+                m = re.match(r'^([inout\/\[\]]+) *([a-zA-Z0-9_]+) *(-) *(.*)', l.strip())
+                if m:
+                    name = m.group(2)
+                    desc = '{} {}'.format(m.group(1), m.group(4))
+                else:
+                    m = re.match(r'^([a-zA-Z0-9_]+) *(-|:|=)? *(\[[inout\/I]+\]) *(.*)?', l.strip())
+                    if m:
+                        name = m.group(1)
+                        desc = '{} {}'.format(m.group(3), m.group(4))
+                    else:
+                        m = re.match(r'^[a-zA-Z0-9\_]+$', l.strip())
+                        if m:
+                            name = m.group(0)
+                            desc = ''
+
+
+        if not (name or desc):
             if len(params) == 0:
-                orphans.append(l)
+                if orphans or l.strip(): # only save orphaned line if it's not empty OR we already have others
+                    orphans.append(l)
                 # print ' ' * indent + '// TODODOC: error parsing parameters "{}"'.format(l)
                 # raise Exception(l)
             else:
