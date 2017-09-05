@@ -191,14 +191,19 @@ class Block:
         # strip comment chars and set indent
         self.strip()
 
-        if self.indent > 10: # comments with large indents are better left alone
+        # comments with large indents are better left alone
+        if self.indent > 10:
             for l in self.original:
                 # print ' ' * self.indent + '//' + l.rstrip()
                 print l.rstrip()
-        elif len(self) == 1: # don't try to parse one line comments
-            # print ' ' * self.indent + '///' + self.lines[0].rstrip()
-            print self.original[0].rstrip()
-        else: # try to parse doc-o-matic syntax
+
+        # don't try to parse one line comments
+        elif len(self) == 1:
+            for l in self.original:
+                print l.rstrip()
+
+        # try to parse doc-o-matic syntax
+        else:
             store = {}
             current_key = None
             orphans = []
