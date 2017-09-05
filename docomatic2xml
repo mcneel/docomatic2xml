@@ -312,8 +312,8 @@ def process_params(lines, indent):
 
     params = []
     orphans = []
-    name = desc = None
     for l in lines: # another loop!
+        name = desc = None
         m = re.match(r'^([a-zA-Z0-9_]+) +- *(.*)', l.strip())
         if m:
             name = m.group(1)
