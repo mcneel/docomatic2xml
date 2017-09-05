@@ -106,13 +106,18 @@ def process_lines(content):
             # only look for these if we've not in a /* */ block
             m = re.match(r'^( *)//(.*)', l) # match //
             if m:
-                if m.group(2).startswith('/'): # fixup existing /// comments
-                    if re.search('^ *///[^ /]', l):
-                        print l.replace('///', '/// ')
-                        continue
+                # skip /// lines (but make sure there's a space after the '///')
+                if m.group(2).startswith('/') and re.search('^ *///[^ /]', l):
+                    print l.replace('///', '/// ')
+
+                # skip '// -----...' and '// =====...' lines
+                elif re.search('------', l) or re.search('======', l):
+                    print l
+
+                # add comment to block
                 else:
                     block.lines.append(l)
-                    continue
+                continue
 
         elif in_block:
             # end block comment
@@ -246,15 +251,28 @@ class Block:
             # qualifying keyword was found
             # print them with a note to remind me to come back later
             if orphans:
-                first = 0
-                # print first orphaned line normally, if it's not text, e.g. "// --------"
-                if not re.search('[a-zA-Z0-9]', orphans[0]):
-                    print ' ' * self.indent + '// ' + l
-                    first = 1
-                if len(orphans) > first:
-                    print ' ' * self.indent + '// TODODOC: text found above first keyword'
-                    for l in orphans[first:]:
-                        print ' ' * self.indent + '// ' + l
+                # if we don't have a description, use the orphaned lines
+                if not 'description' in store:
+                    store['description'] = orphans
+                    print 'TODODOC4', store['description']
+
+                # well, at least we tried...
+                else:
+                    # strip leading blank lines
+                    first = 0
+                    for l in orphans:
+                        if not l.strip():
+                            first += 1
+                        else:
+                            break
+                    orphans = orphans[first:]
+
+                    # if we still have orphaned lines, print them with a reminder
+                    if orphans:
+                        print ' ' * self.indent + '// TODODOC: text found above first keyword'
+                        # for l in orphans[first:]:
+                        for l in orphans:
+                            print ' ' * self.indent + '// ' + l
 
             ###########################
             # parse doc-o-matic comment
