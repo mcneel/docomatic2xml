@@ -136,6 +136,10 @@ def process_lines(content):
         block = Block() # reset comment block
         print l
 
+    # in case the file ended with a comment block
+    if len(block) > 0:
+        block.pprint()
+
 class Block:
     def __init__(self, asterix=False):
         self.lines = []
@@ -264,11 +268,13 @@ class Block:
                 store.pop('parameters')
             # Returns => <returns>
             if 'returns' in store:
-                #if len(store['returns']) > 1:
-                print ' ' * self.indent + '/// <returns>'
-                for l in store['returns']:
-                    print ' ' * self.indent + '/// ' + l
-                print ' ' * self.indent + '/// </returns>'
+                if len(store['returns']) == 1: # one-liners
+                    print ' ' * self.indent + '/// <returns>' + store['returns'][0] + '</returns>'
+                else:
+                    print ' ' * self.indent + '/// <returns>'
+                    for l in store['returns']:
+                        print ' ' * self.indent + '/// ' + l
+                    print ' ' * self.indent + '/// </returns>'
                 store.pop('returns')
             # Remarks => <remarks>
             if 'remarks' in store:
@@ -277,13 +283,6 @@ class Block:
                     print ' ' * self.indent + '/// ' + l
                 print ' ' * self.indent + '/// </remarks>'
                 store.pop('remarks')
-            # Comments (alias for 'Remarks')
-            if 'comments' in store:
-                print ' ' * self.indent + '/// <remarks>'
-                for l in store['comments']:
-                    print ' ' * self.indent + '/// ' + l
-                print ' ' * self.indent + '/// </remarks>'
-                store.pop('comments')
             # Example => <example>
             if 'example' in store:
                 print ' ' * self.indent + '/// <example>'
