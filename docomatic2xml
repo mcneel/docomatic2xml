@@ -108,6 +108,9 @@ def process_lines(content):
             if m:
                 # skip /// lines (but make sure there's a space after the '///')
                 if m.group(2).startswith('/'):
+                    if len(block) > 0:
+                        block.pprint()
+                    block = Block() # reset comment block
                     if re.search('^ *///[^ /]', l):
                         print l.replace('///', '/// ')
                     else:
@@ -115,6 +118,9 @@ def process_lines(content):
 
                 # skip '// -----...' and '// =====...' lines
                 elif re.search('------', l) or re.search('======', l):
+                    if len(block) > 0:
+                        block.pprint()
+                    block = Block() # reset comment block
                     print l
 
                 # add comment to block
